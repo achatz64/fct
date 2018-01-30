@@ -4,6 +4,10 @@
 
 We provide a framework for global and free variables in Clojure. Global means they have a global meaning (unlike variables in a function declaration) and free means that they are undefined. This turns any code into a function that can be evaluated by assigning interpretations to the variables. 
 
+### Leiningen
+
+[![Clojars Project](https://img.shields.io/clojars/v/fct.svg)](https://clojars.org/fct)
+
 ## Usage
 
 ### Syntax

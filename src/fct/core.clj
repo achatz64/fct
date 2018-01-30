@@ -240,8 +240,8 @@
   [^{:doc "clojure function (not macro)"} clojure-fn]
   (construct* (c/fn [l] clojure-fn)))
 
-(def ^{:private true :doc "1. example for lift* in ns fct.core"} ex1-lift*
-  ((lift* c/+) (var* :h) (var* :a)))
+;; (def ^{:private true :doc "1. example for lift* in ns fct.core"} ex1-lift*
+;;   ((lift* c/+) (var* :h) (var* :a)))
 
 ;; ;; this works:
 ;; (c/defn new-if [test a b]
@@ -259,7 +259,7 @@
                                                  na '()]
                                           (if a
                                             (c/let [f (c/first a)]
-                                              (recur (c/next a) (c/cons (c/list 'ev* f l)  na)))
+                                              (recur (c/next a) (c/cons (c/list 'fct.core/ev* f l)  na)))
                                             na))))
           for-spec (c/loop [a arg
                             na '()]
@@ -267,19 +267,19 @@
                        (c/let [f (c/first a)]
                          (recur (c/next a) (c/cons (c/list :fct/spec (c/list c/meta f))  na)))
                        na))]
-    `(construct* (c/fn [~l]
-                   ~body)
-                 :spec (c/merge ~@for-spec))))
+    `(fct.core/construct* (c/fn [~l]
+                            ~body)
+                          :spec (c/merge ~@for-spec))))
  
 ;; (c/defmacro ^{:private true :doc "1. example for lift-macro in ns fct.core"} ex1-lift-macro [& args]
 ;;   `(lift-macro c/cond ~@args))
 
 
 (c/defmacro throw [& args]
-  `(lift-macro throw ~@args))
+  `(fct.core/lift-macro throw ~@args))
 
 (c/defmacro if [& args]
-  `(lift-macro if ~@args))
+  `(fct.core/lift-macro if ~@args))
 
 ;; just a copy
 (c/defmacro if-else [& args]
@@ -287,7 +287,7 @@
 
 
 (c/defmacro cond [& args]
-  `(lift-macro c/cond ~@args))
+  `(fct.core/lift-macro c/cond ~@args))
 
 ;; (c/defmacro cond
 ;;   [& clauses]
@@ -300,15 +300,15 @@
 ;;         r))))
 
 (c/defmacro lazy-seq [& args]
-  `(lift-macro c/lazy-seq ~@args))
+  `(fct.core/lift-macro c/lazy-seq ~@args))
 
 ;(ev* (lazy-seq (list (var* :a))) {:a 5})
 
-(c/defmacro and [& args] `(lift-macro c/and ~@args))
+(c/defmacro and [& args] `(fct.core/lift-macro c/and ~@args))
 
-(c/defmacro or [& args] `(lift-macro c/or ~@args))
+(c/defmacro or [& args] `(fct.core/lift-macro c/or ~@args))
 
-(c/defmacro do [& args] `(lift-macro do ~@args))
+(c/defmacro do [& args] `(fct.core/lift-macro do ~@args))
 
 ;(c/defmacro . [& args] `(lift-macro . ~@args))
 
@@ -333,46 +333,46 @@
     (c/cond
       
       (c/= args [])
-      `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map incognito-var* (clojure.core/list ~@m2#)))]
+      `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/incognito-var* (clojure.core/list ~@m2#)))]
                                    ~body)
                           ev-spec# (:fct/spec (clojure.core/meta to-ev#))]
-         (construct* (clojure.core/fn [l#]
-                       (clojure.core/with-meta (clojure.core/fn [& ~arg#]
-                                                 (ev* to-ev#
-                                                      (clojure.core/merge l# (clojure.core/let [~@d#]
-                                                                               (clojure.core/into {} (clojure.core/list ~@m#))))))
-                         {:fct/? false :fct/fcn? true :fct/spec {}}))
-                     :spec ev-spec#))
+         (fct.core/construct* (clojure.core/fn [l#]
+                                (clojure.core/with-meta (clojure.core/fn [& ~arg#]
+                                                          (fct.core/ev* to-ev#
+                                                                        (clojure.core/merge l# (clojure.core/let [~@d#]
+                                                                                                 (clojure.core/into {} (clojure.core/list ~@m#))))))
+                                  {:fct/? false :fct/fcn? true :fct/spec {}}))
+                              :spec ev-spec#))
       
       (c/or (:spec opt) (:gen opt))
-      `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map incognito-var* (clojure.core/list ~@m2#)))]
+      `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/incognito-var* (clojure.core/list ~@m2#)))]
                                    ~body)
                           ev-spec# (:fct/spec (clojure.core/meta to-ev#))
                           args-spec# (if (:spec ~opt)
                                        (:spec ~opt)
                                        (:gen ~opt))]
-         (construct* (clojure.core/fn [l#]
-                      (clojure.core/with-meta (clojure.core/fn [& ~arg#]
-                                                (ev* to-ev#
-                                                    (clojure.core/merge l# (clojure.core/let [~@d#]
-                                                                             (clojure.core/into {} (clojure.core/list ~@m#))))))
-                        {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
-                     :spec (if (:fct/? (c/meta args-spec#))
-                             (c/merge (:fct/spec (c/meta args-spec#))
-                                      ev-spec#)
-                             ev-spec#)))
+         (fct.core/construct* (clojure.core/fn [l#]
+                                (clojure.core/with-meta (clojure.core/fn [& ~arg#]
+                                                          (fct.core/ev* to-ev#
+                                                                        (clojure.core/merge l# (clojure.core/let [~@d#]
+                                                                                                 (clojure.core/into {} (clojure.core/list ~@m#))))))
+                                  {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
+                              :spec (if (:fct/? (c/meta args-spec#))
+                                      (c/merge (:fct/spec (c/meta args-spec#))
+                                               ev-spec#)
+                                      ev-spec#)))
 
       :else
       `(clojure.core/let
-             [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map incognito-var* (clojure.core/list ~@m2#)))]
-                       ~body)
-              ev-spec# (:fct/spec (clojure.core/meta to-ev#))]
-           (construct* (clojure.core/fn [l#]
-                        (clojure.core/fn [& ~arg#]
-                          (ev* to-ev#
-                              (clojure.core/merge l# (clojure.core/let [~@d#]
-                                                       (clojure.core/into {} (clojure.core/list ~@m#)))))))
-                       :spec ev-spec#)))))
+           [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/incognito-var* (clojure.core/list ~@m2#)))]
+                     ~body)
+            ev-spec# (:fct/spec (clojure.core/meta to-ev#))]
+         (fct.core/construct* (clojure.core/fn [l#]
+                                (clojure.core/fn [& ~arg#]
+                                  (fct.core/ev* to-ev#
+                                                (clojure.core/merge l# (clojure.core/let [~@d#]
+                                                                         (clojure.core/into {} (clojure.core/list ~@m#)))))))
+                              :spec ev-spec#)))))
 
 
 
@@ -385,7 +385,7 @@
     body
     (c/let [[arg# val#] bindings
             rec# (c/rest (c/rest bindings))]
-      `((fnn [~arg#] (let [~@rec#] ~body))
+      `((fct.core/fnn [~arg#] (fct.core/let [~@rec#] ~body))
         ~val#))))
 
 ;; (def ^{:private true :doc "1. example for let in ns fct.core"} ex1-let
@@ -401,24 +401,24 @@
           ^{:doc "body (only one!) (required)"} body (if opt b o)]
 
     (c/cond (c/and name opt)
-            `(fnn [& a#] ~opt (let [h# (fnn [self# & a#]
-                                           (let [~name (fnn [& a#] (apply self# (conj a# self#)))
-                                                 ~args a#]
-                                             ~body))]
-                               (apply h# (conj a# h#))))
+            `(fct.core/fnn [& a#] ~opt (fct.core/let [h# (fct.core/fnn [self# & a#]
+                                                                       (fct.core/let [~name (fct.core/fnn [& a#] (fct.core/apply self# (fct.core/conj a# self#)))
+                                                                                      ~args a#]
+                                                                         ~body))]
+                                         (fct.core/apply h# (fct.core/conj a# h#))))
             
             name
-            `(fnn [& a#] (let [h# (fnn [self# & a#]
-                                       (let [~name (fnn [& a#] (apply self# (conj a# self#)))
-                                             ~args a#]
-                                         ~body))]
-                           (apply h# (conj a# h#))))
+            `(fct.core/fnn [& a#] (fct.core/let [h# (fct.core/fnn [self# & a#]
+                                                                  (fct.core/let [~name (fct.core/fnn [& a#] (fct.core/apply self# (fct.core/conj a# self#)))
+                                                                                 ~args a#]
+                                                                    ~body))]
+                                    (fct.core/apply h# (fct.core/conj a# h#))))
             
             opt
-            `(fnn ~args ~opt ~body)
+            `(fct.core/fnn ~args ~opt ~body)
             
             "else"
-            `(fnn ~args ~body))))
+            `(fct.core/fnn ~args ~body))))
 
 ;; (def ^{:private true :doc "1. example for fn in ns fct.core"} ex1-fn
 ;;   (fn [x] x))
@@ -429,7 +429,7 @@
 
 
 (c/defmacro defn [name & sigs]
-  `(def ~name (fn ~name ~@sigs)))
+  `(def ~name (fct.core/fn ~name ~@sigs)))
 
 
 ;;
@@ -466,9 +466,9 @@
   (check* (gen* f)))
 
 
-(def ^{:private true :doc "1. example for gcheck* in ns fct.core"} ex1-gcheck*
-  (gcheck* (fn [x] {:gen (fn [] (vector (rand-int 100)))}
-             x)))
+;; (def ^{:private true :doc "1. example for gcheck* in ns fct.core"} ex1-gcheck*
+;;   (gcheck* (fn [x] {:gen (fn [] (vector (rand-int 100)))}
+;;              x)))
 
 
 (c/defn ^{:doc "runs tests by using check*"} ftest*
@@ -541,10 +541,10 @@
           args# (c/into [] (c/map c/first all#))
           data# (c/map c/second all#)]
     
-    `(loopf ((lift* c/vector) ~@data#)
-            (fnn [~args#] ~test)
-            (fnn [~args#] ~rec)
-            (fnn [~args#] ~ret))))
+    `(fct.core/loopf ((fct.core/lift* c/vector) ~@data#)
+                     (fct.core/fnn [~args#] ~test)
+                     (fct.core/fnn [~args#] ~rec)
+                     (fct.core/fnn [~args#] ~ret))))
  
 ;; (gen* (loop [x '(1 2 3) y '()]
 ;;         (= 0 (count x))
@@ -706,8 +706,8 @@
                      (c/fn [& args] (c/let [c (string-to-0-99 (c/pr-str args))]
                                       (c/nth ret-samples c)))))))
 
-(def ^{:private true :doc "1. example for rand-fn in ns fct.core"} ex1-rand-fn
-  (gen* (rand-fn (fn [] (rand-nth '(true false))))))
+;; (def ^{:private true :doc "1. example for rand-fn in ns fct.core"} ex1-rand-fn
+;;   (gen* (rand-fn (fn [] (rand-nth '(true false))))))
 
 
 (defn ^{:doc "random collection"} rand-coll
