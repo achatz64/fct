@@ -34,7 +34,7 @@ The expressions can be combined:
 ```
 
 Any `clojure.core` function has a "lift" in `fct.core` so that it can be used on variables. In order to lift some other function:
-```
+```clj
 (def lift-my-not (f/lift* (fn my-not [x] (if x false true))))
 
 (f/ev* (lift-my-not b) {:x true :y false :z true})
