@@ -2,13 +2,83 @@
 
 ### Free variables in clojure
 
-We provide a framework for global and free variables in Clojure. Global means they have a global meaning (unlike variables in a function declaration) and free means that they are undefined. This turns any code into a function that can be evaluated by assigning interpretations to the variables. 
+We provide a framework for global and free variables in [Clojure](http://clojure.org). Global means they have a global meaning (unlike variables in a function declaration) and free means that they are undefined. This turns any code into a function that can be evaluated by assigning interpretations to the variables.
 
-### Leiningen
+
+### Usage
+
+Create a new project with [Leiningen](http://leiningen.org) and add this dependency:
 
 [![Clojars Project](https://img.shields.io/clojars/v/fct.svg)](https://clojars.org/fct)
 
-## Usage
+Require `fct.core`:
+```clj
+(require '[fct.core :as f])
+```
+
+Forming expressions with variables:
+```clj
+(def a (f/and (f/var* :x) (f/var* :y)))
+```
+
+Evaluation:
+```clj
+(f/ev* a {:x true :y false})
+```
+
+The expressions can be combined:
+```clj
+(def b (f/or a (f/and (f/var* :x) (f/var* :z))))
+
+(f/ev* b {:x true :y false :z true})
+```
+
+Any `clojure.core` function has a "lift" in `fct.core` so that it can be used on variables. In order to lift some other function:
+```
+(def lift-my-not (f/lift* (fn my-not [x] (if x false true))))
+
+(f/ev* (lift-my-not b) {:x true :y false :z true})
+```
+
+The most essential macros or special forms in `clojure.core` have a lift in `fct.core`.
+Local bindings:
+```clj
+(def d (f/let [{:keys [my]} (f/var* :x)] my))
+
+(f/ev* d {:x {:my "project"}})
+```
+The special form `if` is replaced `f/if` or `f/if-else`
+```clj
+(def e (f/if-else (f/var* :x)
+                  "ok?"
+                  (f/throw (Exception. "GL!"))))
+
+(f/ev* e {:x true})
+```
+Function construction:
+```clj
+(def f (f/fn [a] ((f/var* :x) a (f/var* :y))))
+
+((f/ev* f {:x + :y -4}) 4)
+```
+
+For testing it's better to supply ranges for the variables, `gen*` generates a witness:
+```clj
+(def g (f/+ 5 (f/var* :x (f/rand-int 10))))
+
+(f/gen* g)
+```
+Any fct expression can be used:
+```clj
+(f/gen* (f/var* :x (lift-my-not (f/rand-nth '(true false)))))
+```
+Function construction allows for including generators (= an fct function without argument returning a vector) for the arguments
+```clj
+(def h (f/fn [a y] {:gen (f/fn [] (f/vector (f/rand-int 5) (f/rand-int 5)))}
+         ((f/var* :x +) a y)))
+
+(f/gcheck* h)
+```
 
 ### Syntax
 
@@ -19,35 +89,30 @@ Clojure functions that turn fct expressions to clojure expressions or the other 
 Macros are simply macros, most clojure macros won't produce the desired outcome when applied to pure fct objects. There is a `lift-macro` macro for generic use, but macros are all different (unlike functions), and lifting cannot be automated. For example, the threading macros automatically do what they are supposed to, and using `lift-macro` on them produces nonsense.
 
 The `fn`, `let`, and `loop` macros are newly defined and are similar to the corresponding clojure macros. The syntax of `loop` is most different, but the functionality is the same. The macro `fn` accepts one body only, and works like a hypothetical `new-fn` in the `clojure.core` namespace:  
-```
+```clj
 (defmacro new-fn [vec-arg body] (fn [& args] (let [vec-arg args] body)))
 ```          
 In particular, it does not have an arity anymore.
 
 Special forms like `if`, `do`, `throw`,... won't work. For some there are replacement macros. For example, `if-else` or `fct.core/if` for `if`. Note that the names of special forms don't belong to a namespace, so `if` is interpreted by the compiler as the one and only `if`.  
 
-### To do
-- [ ] add doc strings
-
-### Hints
-
 ### Pitfalls
 If `a` is an fct object then
-```
+```clj
 [a] '(a) {:? a}
 ```
 are not fct objects. They won't be interpreted correctly. Instead use:
-```
-(vector a) (list a) (hash-map :? a)
+```clj
+(f/vector a) (f/list a) (f/hash-map :? a)
 ```
 
 The following won't work
+```clj
+(f/fn [x] {:gen (f/fn [] (f/rand 1))} x),
 ```
-(fn [x] {:spec (fn [] (rand 1))} x),
-```
-because `(rand 1)` will evaluate to some number `0.????`, but we need `[0.????]` (as in `[x]`). Instead use:
-```
-(fn [x] {:spec (fn [] (vector (rand 1)))} x).
+because `(f/rand 1)` will evaluate to some number `0.????`, but we need `[0.????]` (as in `[x]`). Instead use:
+```clj
+(f/fn [x] {:gen (f/fn [] (f/vector (f/rand 1)))} x).
 ```
 
 
