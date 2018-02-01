@@ -47,7 +47,7 @@ Local bindings:
 
 (f/ev* d {:x {:my "project"}})
 ```
-The special form `if` is replaced `f/if` or `f/if-else`
+The special form `if` is replaced by `f/if` or `f/if-else`
 ```clj
 (def e (f/if-else (f/var* :x)
                   "ok?"
@@ -79,6 +79,8 @@ Function construction allows for including generators (= an fct function without
 
 (f/gcheck* h)
 ```
+
+See [Algebra](https://github.com/achatz64/example-fct-algebra) for an example written in fct. 
 
 ### Syntax
 
