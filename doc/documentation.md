@@ -24,7 +24,7 @@
    &
    {:keys [^{:doc "key, meta data of the constructed clj object corresponding to this key will be evaluated too"} key]
     :or {key :fct/spec}}] ...)
-    ```
+```
 Examples:
 ```clj
  (def ^{:doc "1. example for ev* in ns fct.core"} ex1-ev*
