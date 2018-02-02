@@ -61,7 +61,16 @@ Function construction:
 
 ((f/ev* f {:x + :y -4}) 4)
 ```
+For loops the syntax is a bit different from clojure syntax:
+```clj
+(def l (f/loop [x (f/var* :counter)]
+         {:test (f/= x 0)
+          :rec (f/do (f/println x)
+                     (f/rec (f/dec x)))
+          :ret "Done!"}))
 
+(f/ev* l {:counter 10})
+```
 For testing it's better to supply ranges for the variables, `gen*` generates a witness:
 ```clj
 (def g (f/+ 5 (f/var* :x (f/rand-int 10))))
@@ -80,7 +89,7 @@ Function construction allows for including generators (= an fct function without
 (f/gcheck* h)
 ```
 
-See [Algebra](https://github.com/achatz64/example-fct-algebra) for an example written in fct. 
+See [Algebra](https://github.com/achatz64/example-fct-algebra) for an example written in fct.
 
 ### Syntax
 
@@ -117,6 +126,7 @@ because `(f/rand 1)` will evaluate to some number `0.????`, but we need `[0.????
 (f/fn [x] {:gen (f/fn [] (f/vector (f/rand 1)))} x).
 ```
 
+In the following we list functions and macros in `fct.core`, see the [Documentation](https://github.com/achatz64/fct/blob/master/doc/documentation.md) for more details.
 
 ### `*` functions in fct
 name in fct.core | use
@@ -142,7 +152,7 @@ name in fct.core| use
 `let` | local bindings
 `loop` | loop
 `lift-macro` | generic lifting of macros  
-`if-else` | copy of `if`
+`if-else` | equivalent of `clojure.core/if`
 
 Macros in `fct.core` that work like the corresponding clojure macros or special forms:
 ```
@@ -158,6 +168,18 @@ name in fct.core | use
 rand-fn  | random function
 rand-coll | random collection from a list
 
+### Using `fct.core` as reference
+The following will look up names without namespace reference in `fct.core` instead of `core.clj`:
+```clj
+(ns my-project.core
+  (:refer-clojure :only [])
+  (:require
+   [fct.core]
+   [clojure.core :as c]))
+
+(c/refer 'fct.core)
+```
+After this remember to call `clojure.core` functions with `c/`. 
 
 ## License
 
