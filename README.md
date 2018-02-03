@@ -9,7 +9,7 @@ We provide a framework for global and free variables in [Clojure](http://clojure
 
 Create a new project with [Leiningen](http://leiningen.org) and add this dependency:
 
-[![Clojars Project](https://img.shields.io/clojars/v/fct.svg)](https://clojars.org/fct)
+[![Clojars Project](https://clojars.org/fct/latest-version.svg)](https://clojars.org/fct)
 
 Require `fct.core`:
 ```clj
@@ -179,7 +179,7 @@ The following will look up names without namespace reference in `fct.core` inste
 
 (c/refer 'fct.core)
 ```
-After this remember to call `clojure.core` functions with `c/`. 
+After this remember to call `clojure.core` functions with `c/`.
 
 ## License
 
