@@ -4,6 +4,7 @@
 
 We provide a framework for global and free variables in [Clojure](http://clojure.org). Global means they have a global meaning (unlike variables in a function declaration) and free means that they are undefined. This turns any code into a function that can be evaluated by assigning interpretations to the variables.
 
+For the motivations and goals behind fct: [Motivation](http://github.com/achatz64/motivation-fct)
 
 ### Usage
 
