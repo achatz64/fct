@@ -41,7 +41,7 @@
 
 (c/defn ^{:doc "dependence tree of an fct object"} deps-tree*
   [^{:doc "fct object"} object
-   ^{:doc "map providing substitutions for some variables, those variables will be considered dead ends of the dependence tree"} var-map]
+   ^{:doc "map providing substitutions for some variables, those variables will be considered dead ends of the dependence tree and substitution will be performed"} var-map]
   
   (c/let [get-spec (c/fn [object] (c/let [m (c/meta object)]
                                     (if (:fct/? m)
@@ -87,7 +87,6 @@
 (c/defn ^{:doc "lists all variables on which the object depends"} deps*
   [^{:doc "fct-object"} object]
   (c/into #{} (c/apply c/concat (c/map c/keys (c/-> object deps-list*)))))
-
 
 
 (clojure.core/defn ^{:doc "generates a witness"} gen*
@@ -136,6 +135,17 @@
 ;; (def ^{:private true :doc "2. example for construct* in ns fct.core"} ex2-construct*
 ;;   (construct* (c/fn [l] (:boolean l)) :spec {:boolean (rand-nth (list true false))}))
 
+(c/defn ^{:private true :doc "only interpretation is touched"}
+  simple-inter-sub* [^{:doc "fct object"} object
+                     ^{:doc "substitution map"} l]
+  (c/let [simple-inter-sub* (c/fn [inter]
+                              (c/fn [w]
+                                (inter (c/merge w (c/into {} (c/map (c/fn [[k v]] [k (ev* v w)])
+                                                                    l))))))
+          m (c/-> object c/meta)]
+    (if (:fct/? m)
+      (c/with-meta object (c/update m :fct/inter (c/fn [inter] (simple-inter-sub* inter))))
+      object)))
 
 (c/defn ^{:private true :doc "Used in sub*"} collaps-tree
   [^{:doc "as returned by deps-tree*"} tree
@@ -147,10 +157,12 @@
                             (c/with-meta object
                               (c/assoc m :fct/spec spec-replacement))
                             object)))
+          
           find-children (c/fn [layer kv]
                           (c/filter (c/fn [[x o]] (c/every? c/identity
                                                             (c/map c/= kv x)))
                                     layer))
+          
           sub-spec (c/fn [children]
                      (c/let [children-remain (c/filter (c/fn [[x o]] (c/not (c/contains? var-map (c/peek x))))
                                                        children)
@@ -159,7 +171,7 @@
                        (c/merge
                         (c/apply c/merge (c/map (c/fn [[x o]] (:fct/spec (c/meta o)))
                                                 children-sub))
-                        (c/into {} (c/map (c/fn [[x o]] [(c/peek x) o])
+                        (c/into {} (c/map (c/fn [[x o]] [(c/peek x) (simple-inter-sub* o var-map)])
                                           children-remain)))))
           collaps (c/fn [layer kvo]
                     (c/let [children (find-children layer (c/first kvo))
@@ -172,7 +184,6 @@
         (if (c/empty? tree)
           tree
           (sub-spec (c/first tree)))
-        
         (c/let [[f s] tree
                 rec-s (c/map (c/fn [kvo] (collaps f kvo))
                              s)]
@@ -191,11 +202,12 @@
   (if (c/-> object c/meta :fct/?)
     (c/let [spec-sub* (c/fn [object] (c/-> object (deps-tree* l) (collaps-tree l)))
             simple-inter-sub* (c/fn [inter w] (inter (c/merge w (c/into {} (c/map (c/fn [[k v]] [k (ev* v w)])
-                                                                           l)))))
+                                                                                  l)))))
             inter-sub* (c/fn [object] (c/let [m (c/-> object c/meta)]
                                         (if (:fct/? m)
                                           (c/with-meta object (c/update m :fct/inter (c/fn [inter] (c/fn [w] (simple-inter-sub* inter w)))))
                                           object)))
+            
             inter  (c/-> object c/meta :fct/inter) 
             new-inter (c/fn [w] (c/let [after-sub* (simple-inter-sub* inter w)
                                         m (c/meta after-sub*)
@@ -214,15 +226,16 @@
 ;; (def ^{:private true :doc "1. example for sub* in ns fct.core"} ex1-sub*
 ;;   (sub* (+ 1 (var* :a)) {:a (var* :b)}))
 
+;(def t (sub* (var* :a (var* :b 4)) {:b (var* :c 40)}))
 
 (c/defn ^{:doc "variable construction"} var*
   ([^{:doc "keyword attached to the variable"} key]
    (var* key nil))
   ([^{:doc "keyword attached to the variable"} key
-    ^{:doc "spec or fct object"} spec]
+    ^{:doc "fct object"} spec]
    (if (c/keyword? key)
      (construct* (c/fn [l] (key l))
-              :spec (c/hash-map key spec))
+                 :spec (c/hash-map key spec))
      (throw (Exception. "fct: var* expects a keyword as first argument")))))
 
 ;; (def ^{:private true :doc "1. example for var* in ns fct.core"} ex1-var*
