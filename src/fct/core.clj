@@ -138,6 +138,7 @@
 (c/defn ^{:private true :doc "only interpretation is touched"}
   simple-inter-sub* [^{:doc "fct object"} object
                      ^{:doc "substitution map"} l]
+  
   (c/let [simple-inter-sub* (c/fn [inter]
                               (c/fn [w]
                                 (inter (c/merge w (c/into {} (c/map (c/fn [[k v]] [k (ev* v w)])
@@ -226,7 +227,66 @@
 ;; (def ^{:private true :doc "1. example for sub* in ns fct.core"} ex1-sub*
 ;;   (sub* (+ 1 (var* :a)) {:a (var* :b)}))
 
-;(def t (sub* (var* :a (var* :b 4)) {:b (var* :c 40)}))
+;;(def t (sub* (var* :a (var* :b 4)) {:b (var* :c 40)}))
+
+
+;; (c/defn ^{:private true :doc "key to string (c/name doesn't do the job), used in mount*"} key-to-str
+;;   [^{:doc "keyword"} k]
+;;   (c/apply c/str (c/rest (c/str k))))
+
+;; (c/defn ^{:private true :doc "adding keys, used in mount*"} add-keys
+;;   [^{:doc "keyword"} a & ^{:doc "keywords"} b]
+;;   (c/keyword (c/apply c/str
+;;                       (c/cons (c/str (key-to-str a) "/") (c/map key-to-str b)))))
+
+
+;; (c/defn ^{:private true :doc "mounting a key, used in mount*"} mount-key
+;;   [^{:doc "keyword, mount point"} m
+;;    ^{:doc "list of keywords to be mounted"} ks]
+;;   (c/fn [^{:doc "keyword to be mounted"} k]
+;;     (if (c/empty? (c/filter (c/fn [x] (c/= x k)) ks))
+;;       k
+;;       (add-keys m k))))
+
+;; (c/defn ^{:private true :doc "unmount keyword, return nil if not mounted, used in mount*"} unmount-key
+;;   [^{:doc "keyword, mount point"} m
+;;    ^{:doc "list of keywords to be mounted"} ks
+;;    ^{:doc "list of keywords to be left untouched"} export]
+  
+;;   (c/fn [^{:doc "keyword to be mounted"} k]
+;;     (if (c/empty? (c/filter (c/fn [x] (c/= x k))
+;;                             export))
+;;         (c/let [str-m (c/rest (c/str (c/str m) "/"))
+;;                 c (c/count str-m)
+;;                 str-k (c/rest (c/str k))]
+;;           (if (c/= (c/take c str-k)
+;;                    str-m)
+;;             (c/let [unmount (c/keyword (c/apply c/str (c/drop c str-k)))]
+;;               (if (c/empty? (c/filter (c/fn [x] (c/= x unmount)) ks))
+;;                 nil
+;;                 unmount))
+;;             nil))
+;;         k)))
+
+;; (c/defn ^{:private true :doc "only interpretation is touched, used in mount*"}
+;;   simple-inter-mount* [^{:doc "fct object"} object
+;;                        ^{:doc "keyword, mount point"} m
+;;                        ^{:doc "list of keywords to be mounted"} ks
+;;                        ^{:doc "list of keywords to be left untouched"} export]
+  
+;;   (c/let [unmount (unmount-key m ks export)
+;;           filter-keys (c/fn [l] (c/filter (c/fn [[k]] (c/not (c/= nil (unmount k))))
+;;                                           l))
+;;           simple (c/fn [inter]
+;;                    (c/fn [l]
+;;                      (inter (c/into {} (c/map (c/fn [[k v]] [(unmount k) v])
+;;                                               (filter-keys l))))))
+;;           m (c/-> object c/meta)]
+;;     (if (:fct/? m)
+;;       (c/with-meta object (c/update m :fct/inter (c/fn [inter] (simple inter))))
+;;       object)))
+
+
 
 (c/defn ^{:doc "variable construction"} var*
   ([^{:doc "keyword attached to the variable"} key]
@@ -733,6 +793,4 @@
 
 ;; (def ^{:private true :doc "1. example for rand-coll in ns fct.core"} ex1-rand-coll
 ;;   (gen* (rand-coll '(1 2 3 4) 5)))
-
-
 
