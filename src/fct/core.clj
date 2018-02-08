@@ -5,6 +5,8 @@
    [clojure.set]))
 
 
+
+
 ;;
 ;; evaluate to a usual clojure object
 ;;
@@ -39,70 +41,138 @@
 ;;   (ev* (fn [a] (+ (var* :y) a))
 ;;        {:y 5}))
 
-(c/defn ^{:doc "dependence tree of an fct object"} deps-tree*
-  [^{:doc "fct object"} object
-   ^{:doc "map providing substitutions for some variables, those variables will be considered dead ends of the dependence tree and substitution will be performed"} var-map]
+(c/defn ^{:doc "as merge, but works with nested maps"} nested-merge
+  [& ^{:doc "hash-maps"} args]
   
-  (c/let [get-spec (c/fn [object] (c/let [m (c/meta object)]
-                                    (if (:fct/? m)
-                                      (:fct/spec m)
-                                      {})))
-          add-spec (c/fn [vector-keys object]
-                     (c/map (c/fn [[k v]] (if (c/contains? var-map k)
-                                            (c/vector (c/conj vector-keys k)
-                                                      (k var-map))
-                                            (c/vector (c/conj vector-keys k)
-                                                      v)))
-                            (get-spec object)))
-          remove-subs (c/fn [layer]
-                        (c/filter (c/fn [[kv o]] (c/not (c/contains? var-map (c/peek kv))))
-                                  layer))]
-    (c/loop
-        [l (c/list (add-spec [] object))
-         new (add-spec [] object)]
-      (if (c/empty? new)
-        (if (c/empty? (c/first l))
-          (c/rest l)
-          l)
-        (c/let [rec-new (c/apply c/concat (c/map (c/fn [[vk o]] (add-spec vk o))
-                                                 (remove-subs new)))]
-          (recur (c/conj l rec-new)
-                 rec-new))))))
+  (c/let [test-some? (c/some c/identity (c/map c/map? args))]
+    (if test-some?
+      (c/let [args (c/filter c/map? args)
+              keys (c/into #{} (c/apply c/concat (c/map c/keys args)))]
+        (c/into {} (c/map (c/fn [k] [k (c/apply nested-merge (c/map (c/fn [x] (k x))
+                                                                   args))])
+                          keys)))
+      (c/let [args (c/filter #(c/-> % c/nil? c/not)
+                             args)]
+        (if (c/empty? args)
+          nil
+          (c/first args))))))
 
-;; (def ^{:private true :doc "1. example for deps-tree* in ns fct.core"} ex1-deps-tree*  (deps-tree* (var* :a (fn [x] ((var* :b (var* :c)) x))) {}))
+(c/defn ^{:doc "find all keys for a nested map"} nested-keys
+  [^{:doc "nested map"} m]
 
-;; (def ^{:private true :doc "2. example for deps-tree* in ns fct.core"} ex2-deps-tree*  (deps-tree* (var* :a (fn [x] ((var* :b (var* :c)) x))) {:b (var* :d)}))
+  (if (c/map? m)
+    (c/let [keys (c/keys m)]
+      (c/apply c/concat (c/map (c/fn [k] (c/let [r (c/map (c/fn [v] (c/into [] (c/cons k v)))
+                                                          (nested-keys (k m)))]
+                                           (if (c/empty? r)
+                                             (c/list [k])
+                                             r)))
+                               keys)))
+    '()))
 
-(c/defn ^{:doc "describes all variables on which the object depends"} deps-list*
-  [^{:doc "fct object"} object]
+(c/defn ^{:doc "convert key-value lists to nested hash-maps"} nested-into
+  [^{:doc "key-value lists"} kv]
+  (c/loop [r {}
+           kv kv]
+    (if (c/not (c/empty? kv))
+      (c/let [[[k v]] kv]
+        (recur (c/assoc-in r k v)
+               (c/rest kv)))
+      r)))
 
-  (c/let [start (deps-tree* object {})]
-    (c/map (c/fn [l] (c/into {} (c/map (c/fn [[x y]] [(c/peek x) y])
-                                       l)))
-           start)))
+(c/defn ^{:doc "convert nested hash-map to key-value list"} nested-key-value
+  [^{:doc "nested map"} m]
+  (c/map (c/fn [k] [k (c/get-in m k)]) (nested-keys m)))
 
-;; (def ^{:private true :doc "1. example for deps-list* in ns fct.core"} ex1-deps-list*  (deps-list* (var* :a (fn [x] ((var* :b (var* :c)) x)))))
+(c/defn dissoc-in 
+  [^{:doc "nested map"} m
+   ^{:doc "key"} k]
+  (if (c/= 1 (c/count k))
+    (c/let [[k] k]
+      (c/dissoc m k))
+    (c/update-in m (c/pop k) (c/fn [x] (c/dissoc x (c/peek k))))))
 
+;; (c/defn ^{:doc "merge functions"} gen-merge
+;;   [& ^{:doc "functions"} gens]
+;;   (c/fn [k] (c/loop [r nil
+;;                      gens gens]
+;;               (if (c/or (c/not gens) r)
+;;                 r
+;;                 (c/let [[g] gens]
+;;                   (recur (g k) (c/next gens)))))))
 
-(c/defn ^{:doc "lists all variables on which the object depends"} deps*
+;; (def ^{:doc "empty gen"} gen-empty (c/fn [k] nil))
+
+;; (c/defn ^{:doc "gen-function construction"} gen-kv
+;;   [[^{:doc "something"} some
+;;     ^{:doc "value of something"} value]]
+;;   (c/fn [x] (if (c/= some x)
+;;               value
+;;               nil)))
+
+;; (c/defn ^{:doc "into a hash-map"} gen-into
+;;   [^{:doc "hash-function"} gen
+;;    ^{:doc "list of keys"} key-list]
+;;   (c/let [kv (c/map (c/fn [k] [k (gen k)])
+;;                     key-list)]
+;;     (c/loop [r {}
+;;              kv kv]
+;;       (if kv
+;;         (c/let [[[k v]] kv]
+;;           (recur (c/assoc-in r k v)
+;;                  (c/next kv)))
+;;         r))))
+
+(c/defn ^{:doc "constructs an fct object"} construct*
+  [^{:doc "function assigning maps with variable bindings (like l in ev*) a clojure object"} inter
+   & {:keys [^{:doc "generators for the variables"} gen
+             ^{:doc "dependencies"} deps]
+      :or {gen {}
+           deps #{}}}]
+  
+  (c/with-meta
+    (c/fn [& args] (construct*
+                    (c/fn [l]
+                      (c/apply (inter l) (c/map #(ev* % l) args)))
+                    :gen (c/apply nested-merge (c/conj (c/map #(c/-> % c/meta :fct/gen)
+                                                             args)
+                                                      gen))
+                    :deps (c/apply clojure.set/union (c/conj (c/map #(c/-> % c/meta :fct/deps)
+                                                                    args)
+                                                             deps))))
+    {:fct/? true
+     :fct/inter inter
+     :fct/gen gen
+     :fct/deps deps}))
+
+;; (def ^{:private true :doc "1. example for construct* in ns fct.core"} ex1-construct*
+;;   (construct* (c/fn [l] (:a l)))) 
+
+;; (def ^{:private true :doc "2. example for construct* in ns fct.core"} ex2-construct*
+;;   (construct* (c/fn [l] (:boolean l)) :spec {:boolean (rand-nth (list true false))}))
+
+(c/defn ^{:doc "variables on which the object depends"} deps*
   [^{:doc "fct-object"} object]
-  (c/into #{} (c/apply c/concat (c/map c/keys (c/-> object deps-list*)))))
+  (:fct/deps (c/meta object)))
 
+(c/defn ^{:doc ""} show-gen*
+  [^{:doc "fct-object"} object]
+  (:fct/gen (c/meta object)))
+
+(c/defn ^{:doc "is pure fct object?"} fct?*
+  [^{:doc "fct object"} object]
+  (:fct/? (c/meta object)))
 
 (clojure.core/defn ^{:doc "generates a witness"} gen*
   [^{:doc "fct object"} a]
-  
-  (c/let [^{:doc "loop creating the map which provides the interpretations for the variables"} l
-          (c/loop [d (deps-list* a)
-                   l {}]
-            (if (c/empty? d)
-              l
-              (c/let [f (c/first d)
-                      ev-f (c/into {} (c/map (c/fn [[k v]] [k (ev* v l)])
-                                             f))]
-                (recur (c/rest d) (c/merge ev-f l)))))]
-    (ev* a l :key :fct/spec)
-    ))
+  (if (fct?* a)
+    
+    (c/let [gen (:fct/gen (c/meta a))]
+      (ev* a (c/apply nested-merge  (c/map (c/fn [k] (c/assoc-in {} k (c/get-in gen k)))
+                                          (deps* a)))))
+    
+    a))
+
 
 ;; (def ^{:private true :doc "1. example for gen* in ns fct.core"} ex1-gen*
 ;;   (gen* (var* :boolean (rand-nth (list true false)))))
@@ -113,85 +183,126 @@
 
 
 
-(c/defn ^{:doc "constructs an fct object"} construct*
-  [^{:doc "function assigning maps with variable bindings (like l in ev*) a clojure object"} inter
-   & {:keys [^{:doc "examples for the variables"} spec]
-      :or {spec {}}}]
+(c/defn ^{:doc "variable construction"} var*
+  ([^{:doc "keyword attached to the variable"} key]
+   (var* key nil))
+  ([^{:doc "keyword attached to the variable"} key
+    ^{:doc "fct object"} object]
+   (c/let [key (if (c/keyword? key) [key] key)]
+     (construct* (c/fn [l] (c/get-in l key))
+                 :gen (c/assoc-in {} key (gen* object))
+                 :deps #{key}))))
 
-  (c/with-meta
-    (c/fn [& args] (construct*
-                    (c/fn [l]
-                      (c/apply (inter l) (c/map #(ev* % l) args)))
-                    :spec (c/apply c/merge (c/conj (c/map #(c/-> % c/meta :fct/spec)
-                                                        args)
-                                                   spec))))
-    {:fct/? true
-     :fct/inter inter
-     :fct/spec spec}))
+;; (def ^{:private true :doc "1. example for var* in ns fct.core"} ex1-var*
+;;   (if-else (var* :bool)
+;;            (var* :a)
+;;            (var* :b)))
 
-;; (def ^{:private true :doc "1. example for construct* in ns fct.core"} ex1-construct*
-;;   (construct* (c/fn [l] (:a l)))) 
 
-;; (def ^{:private true :doc "2. example for construct* in ns fct.core"} ex2-construct*
-;;   (construct* (c/fn [l] (:boolean l)) :spec {:boolean (rand-nth (list true false))}))
+(c/defn ^{:doc "incognito variable construction"} incognito-var*
+  [^{:doc "keyword attached to the variable"} key]
+  (c/let [key (if (c/keyword? key) [key] key)]
+    (construct* (c/fn [l] (c/get-in l key)))))
+
+
+(c/defn ^{:doc "lifting clojure functions"} lift*
+  [^{:doc "clojure function (not macro)"} clojure-fn]
+  (construct* (c/fn [l] clojure-fn)))
+
+;; (def ^{:private true :doc "1. example for lift* in ns fct.core"} ex1-lift*
+;;   ((lift* c/+) (var* :h) (var* :a)))
+
+;; ;; this works:
+;; (c/defn new-if [test a b]
+;;   (if test
+;;     (a)
+;;     (b)))
+ 
+
+;;
+;; automatic lifting of functions
+;;
+
+;; (def clj  (c/keys (c/ns-publics 'clojure.core)))
+
+(def ^{:private true} meta-var (c/fn [n a]
+                                 (c/meta (c/eval (c/read-string (c/str "(var " (c/str n) (c/str "/") (c/str a)  ")"))))))
+
+
+;(:arglists (meta-var 'clojure.core (c/symbol "+")))
+
+(def ^{:private true} find-functions (c/fn [n]
+                                       (c/let [all-meta (c/map #(meta-var n %)
+                                                               (c/keys (c/ns-publics n)))
+                                               fun-or-mac (c/filter #(c/not (c/= nil (:arglists %)))
+                                                                    all-meta)
+                                               fun (c/filter #(c/not (:macro %)) fun-or-mac)]
+                                         fun)))
+ 
+;(c/count (find-functions 'clojure.core))
+;(c/nth (find-functions 'clojure.core) 101)
+
+
+;; (clojure.set/intersection (c/into #{} (c/map c/first (c/ns-publics 'fct.core)))
+;;                           (c/into #{} (c/map #(:name %) (find-functions 'clojure.core))))
+
+;; (clojure.set/intersection (c/into #{} (c/map #(:name %) (find-functions 'clojure.spec.alpha)))
+;;                           (c/into #{} (c/map #(:name %) (find-functions 'clojure.core))))
+
+(def ^{:private true} lift-all (c/fn [n]
+                                 (c/let [names (c/map #(:name %) (find-functions n))
+                                         intersection (clojure.set/intersection (c/into #{} (c/map c/first (c/ns-publics 'fct.core)))
+                                                                                (c/into #{} names))
+                                         difference (c/into [] (clojure.set/difference (c/into #{} names) intersection))]
+                                   (c/doseq [k difference]
+                                     (c/eval (c/read-string (c/str "(def " (c/str k) " (lift* " (c/str n) "/" (c/str k) "))")))))))
+
+(lift-all 'clojure.core)
+
+
 
 (c/defn ^{:private true :doc "only interpretation is touched"}
-  simple-inter-sub* [^{:doc "fct object"} object
-                     ^{:doc "substitution map"} l]
+  inter-sub* [^{:doc "fct object"} object
+              ^{:doc "substitution map"} l]
   
-  (c/let [simple-inter-sub* (c/fn [inter]
-                              (c/fn [w]
-                                (inter (c/merge w (c/into {} (c/map (c/fn [[k v]] [k (ev* v w)])
-                                                                    l))))))
+  (c/let [sub (c/fn [inter]
+                (c/fn [w]
+                  (inter (nested-merge (nested-into (c/map (c/fn [[k v]] [k (ev* v w)])
+                                                           (nested-key-value l)))
+                                       w))))
           m (c/-> object c/meta)]
     (if (:fct/? m)
-      (c/with-meta object (c/update m :fct/inter (c/fn [inter] (simple-inter-sub* inter))))
+      (c/with-meta object (c/update m :fct/inter (c/fn [inter] (sub inter))))
       object)))
 
-(c/defn ^{:private true :doc "Used in sub*"} collaps-tree
-  [^{:doc "as returned by deps-tree*"} tree
-   ^{:doc "as in deps-tree*"} var-map]
+(c/defn ^{:private true :doc "only gens are touched"}
+  gen-deps-sub* [^{:doc "fct object"} object
+                 ^{:doc "substitution map"} l]
   
-  (c/let [change-spec (c/fn [object spec-replacement]
-                        (c/let [m (c/meta object)]
-                          (if (:fct/? m)
-                            (c/with-meta object
-                              (c/assoc m :fct/spec spec-replacement))
-                            object)))
-          
-          find-children (c/fn [layer kv]
-                          (c/filter (c/fn [[x o]] (c/every? c/identity
-                                                            (c/map c/= kv x)))
-                                    layer))
-          
-          sub-spec (c/fn [children]
-                     (c/let [children-remain (c/filter (c/fn [[x o]] (c/not (c/contains? var-map (c/peek x))))
-                                                       children)
-                             children-sub (c/filter (c/fn [[x o]] (c/contains? var-map (c/peek x)))
-                                                    children)]
-                       (c/merge
-                        (c/apply c/merge (c/map (c/fn [[x o]] (:fct/spec (c/meta o)))
-                                                children-sub))
-                        (c/into {} (c/map (c/fn [[x o]] [(c/peek x) (simple-inter-sub* o var-map)])
-                                          children-remain)))))
-          collaps (c/fn [layer kvo]
-                    (c/let [children (find-children layer (c/first kvo))
-                            new-spec (sub-spec children)]
-                      (if (c/empty? children)
-                        kvo
-                        [(c/first kvo) (change-spec (c/second kvo) new-spec)])))]
-    (c/loop [tree tree]
-      (if (c/empty? (c/rest tree))
-        (if (c/empty? tree)
-          tree
-          (sub-spec (c/first tree)))
-        (c/let [[f s] tree
-                rec-s (c/map (c/fn [kvo] (collaps f kvo))
-                             s)]
-          (recur (c/conj (c/drop 2 tree)
-                         rec-s)))))))
+  (c/let [keys (c/into #{} (nested-keys l))
+          l-kv (nested-key-value l)
+          l-deps (c/apply clojure.set/union (c/map (c/fn [[_ v]] (deps* v))
+                                                   l-kv))
+          l-gen (nested-key-value
+                 (c/apply nested-merge (c/map (c/fn [[_ v]] (show-gen* v))
+                                              l-kv)))
+          m (c/-> object c/meta)]
+    (if (:fct/? m)
+      (c/let [new-deps (clojure.set/union (clojure.set/difference (:fct/deps m) keys)
+                                          l-deps)
+              remove-gen (c/loop [r (:fct/gen m)
+                                  keys (c/into '() keys)]
+                           (if (c/empty? keys)
+                             r
+                             (c/let [[k] keys]
+                               (recur (dissoc-in r k) (c/rest keys)))))
+              new-gen (nested-merge remove-gen (nested-into l-gen))]
+        (c/with-meta object (c/assoc (c/assoc m :fct/deps new-deps)
+                                     :fct/gen new-gen)))
+      object)))
 
-;; sub* is too long and difficult this way, because the values of inter have fct-objects in their meta data; maybe it's better to have fct-objects only appearing in meta data of fct-objects  
+
+;;sub* is too long and difficult this way, because the values of inter have fct-objects in their meta data; maybe it's better to have fct-objects only appearing in meta data of fct-objects  
 
 (clojure.core/defn ^{:doc "substitution of variables"} sub*
   [^{:doc "fct object"} object
@@ -288,40 +399,6 @@
 
 
 
-(c/defn ^{:doc "variable construction"} var*
-  ([^{:doc "keyword attached to the variable"} key]
-   (var* key nil))
-  ([^{:doc "keyword attached to the variable"} key
-    ^{:doc "fct object"} spec]
-   (if (c/keyword? key)
-     (construct* (c/fn [l] (key l))
-                 :spec (c/hash-map key spec))
-     (throw (Exception. "fct: var* expects a keyword as first argument")))))
-
-;; (def ^{:private true :doc "1. example for var* in ns fct.core"} ex1-var*
-;;   (if-else (var* :bool)
-;;            (var* :a)
-;;            (var* :b)))
-
-
-(c/defn ^{:doc "incognito variable construction"} incognito-var*
-  [^{:doc "keyword attached to the variable"} key]
-  (construct* (c/fn [l] (key l))))
-
-
-(c/defn ^{:doc "lifting clojure functions"} lift*
-  [^{:doc "clojure function (not macro)"} clojure-fn]
-  (construct* (c/fn [l] clojure-fn)))
-
-;; (def ^{:private true :doc "1. example for lift* in ns fct.core"} ex1-lift*
-;;   ((lift* c/+) (var* :h) (var* :a)))
-
-;; ;; this works:
-;; (c/defn new-if [test a b]
-;;   (if test
-;;     (a)
-;;     (b)))
-
 
 (c/defmacro ^{:doc "generic lifting of macros"} lift-macro
   [^{:doc "clojure macro"} macro
@@ -334,15 +411,22 @@
                                             (c/let [f (c/first a)]
                                               (recur (c/next a) (c/cons (c/list 'fct.core/ev* f l)  na)))
                                             na))))
-          for-spec (c/loop [a arg
+          for-gen (c/loop [a arg
                             na '()]
                      (if a
                        (c/let [f (c/first a)]
-                         (recur (c/next a) (c/cons (c/list :fct/spec (c/list c/meta f))  na)))
+                         (recur (c/next a) (c/cons (c/list :fct/gen (c/list c/meta f))  na)))
+                       na))
+          for-deps (c/loop [a arg
+                            na '()]
+                     (if a
+                       (c/let [f (c/first a)]
+                         (recur (c/next a) (c/cons (c/list :fct/deps (c/list c/meta f))  na)))
                        na))]
     `(fct.core/construct* (c/fn [~l]
                             ~body)
-                          :spec (c/merge ~@for-spec))))
+                          :gen (fct.core/nested-merge ~@for-gen)
+                          :deps (clojure.set/union ~@for-deps))))
  
 ;; (c/defmacro ^{:private true :doc "1. example for lift-macro in ns fct.core"} ex1-lift-macro [& args]
 ;;   `(lift-macro c/cond ~@args))
@@ -408,44 +492,54 @@
       (c/= args [])
       `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/incognito-var* (clojure.core/list ~@m2#)))]
                                    ~body)
-                          ev-spec# (:fct/spec (clojure.core/meta to-ev#))]
+                          ev-gen# (:fct/gen (clojure.core/meta to-ev#))
+                          ev-deps# (:fct/deps (clojure.core/meta to-ev#))]
          (fct.core/construct* (clojure.core/fn [l#]
                                 (clojure.core/with-meta (clojure.core/fn [& ~arg#]
                                                           (fct.core/ev* to-ev#
                                                                         (clojure.core/merge l# (clojure.core/let [~@d#]
                                                                                                  (clojure.core/into {} (clojure.core/list ~@m#))))))
                                   {:fct/? false :fct/fcn? true :fct/spec {}}))
-                              :spec ev-spec#))
+                              :gen ev-gen#
+                              :deps ev-deps#))
       
       (c/or (:spec opt) (:gen opt))
       `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/incognito-var* (clojure.core/list ~@m2#)))]
                                    ~body)
-                          ev-spec# (:fct/spec (clojure.core/meta to-ev#))
+                          ev-gen# (:fct/gen (clojure.core/meta to-ev#))
+                          ev-deps# (:fct/deps (clojure.core/meta to-ev#))
                           args-spec# (if (:spec ~opt)
                                        (:spec ~opt)
                                        (:gen ~opt))]
+         
          (fct.core/construct* (clojure.core/fn [l#]
                                 (clojure.core/with-meta (clojure.core/fn [& ~arg#]
                                                           (fct.core/ev* to-ev#
                                                                         (clojure.core/merge l# (clojure.core/let [~@d#]
                                                                                                  (clojure.core/into {} (clojure.core/list ~@m#))))))
                                   {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
-                              :spec (if (:fct/? (c/meta args-spec#))
-                                      (c/merge (:fct/spec (c/meta args-spec#))
-                                               ev-spec#)
-                                      ev-spec#)))
+                              :gen (if (:fct/? (c/meta args-spec#))
+                                     (fct.core/nested-merge (:fct/gen (c/meta args-spec#))
+                                                           ev-gen#)
+                                     ev-gen#)
+                              :deps (if (:fct/? (c/meta args-spec#))
+                                      (clojure.set/union (:fct/deps (c/meta args-spec#))
+                                                         ev-deps#)
+                                      ev-deps#)))
 
       :else
       `(clojure.core/let
            [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/incognito-var* (clojure.core/list ~@m2#)))]
                      ~body)
-            ev-spec# (:fct/spec (clojure.core/meta to-ev#))]
+            ev-gen# (:fct/gen (clojure.core/meta to-ev#))
+            ev-deps# (:fct/deps (clojure.core/meta to-ev#))]
          (fct.core/construct* (clojure.core/fn [l#]
                                 (clojure.core/fn [& ~arg#]
                                   (fct.core/ev* to-ev#
                                                 (clojure.core/merge l# (clojure.core/let [~@d#]
                                                                          (clojure.core/into {} (clojure.core/list ~@m#)))))))
-                              :spec ev-spec#)))))
+                              :gen ev-gen#
+                              :deps ev-deps#)))))
 
 
 
@@ -716,48 +810,6 @@
 
 ;; (c/time (s true (c/lazy-seq (c/list (c/fn [] (c/apply c/+ (c/range 100000000)))))))
 
-
-
-
-;;
-;; automatic lifting of functions
-;;
-
-;; (def clj  (c/keys (c/ns-publics 'clojure.core)))
-
-(def ^{:private true} meta-var (c/fn [n a]
-                                 (c/meta (c/eval (c/read-string (c/str "(var " (c/str n) (c/str "/") (c/str a)  ")"))))))
-
-
-;(:arglists (meta-var 'clojure.core (c/symbol "+")))
-
-(def ^{:private true} find-functions (c/fn [n]
-                                       (c/let [all-meta (c/map #(meta-var n %)
-                                                               (c/keys (c/ns-publics n)))
-                                               fun-or-mac (c/filter #(c/not (c/= nil (:arglists %)))
-                                                                    all-meta)
-                                               fun (c/filter #(c/not (:macro %)) fun-or-mac)]
-                                         fun)))
- 
-;(c/count (find-functions 'clojure.core))
-;(c/nth (find-functions 'clojure.core) 101)
-
-
-;; (clojure.set/intersection (c/into #{} (c/map c/first (c/ns-publics 'fct.core)))
-;;                           (c/into #{} (c/map #(:name %) (find-functions 'clojure.core))))
-
-;; (clojure.set/intersection (c/into #{} (c/map #(:name %) (find-functions 'clojure.spec.alpha)))
-;;                           (c/into #{} (c/map #(:name %) (find-functions 'clojure.core))))
-
-(def ^{:private true} lift-all (c/fn [n]
-                                 (c/let [names (c/map #(:name %) (find-functions n))
-                                         intersection (clojure.set/intersection (c/into #{} (c/map c/first (c/ns-publics 'fct.core)))
-                                                                                (c/into #{} names))
-                                         difference (c/into [] (clojure.set/difference (c/into #{} names) intersection))]
-                                   (c/doseq [k difference]
-                                     (c/eval (c/read-string (c/str "(def " (c/str k) " (lift* " (c/str n) "/" (c/str k) "))")))))))
-
-(lift-all 'clojure.core)
 
 
 ;;
