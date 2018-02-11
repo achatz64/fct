@@ -132,14 +132,15 @@ In the following we list functions and macros in `fct.core`, see the [Documentat
 ### `*` functions in fct
 name in fct.core | use
 -----|------
- `ev*` | constructs the corresponding clojure object with user provided  interpretation of the variables
+ `ev*` | constructs the corresponding clojure object with user provided interpretation of the variables
  `var*` | variable creation
  `gen*` | constructs a corresponding clojure object by generating the variables
+ `gev*` | a mix of `ev*` and `gen*`, if no interpretation for a variable is given then it is generated
  `deps*` | shows on which variables the object depends upon
- `deps-tree*` | dependence tree
  `construct*` | constructs a fct object with user provided interpretation
  `lift*` | lifts a clojure function to an fct functions
  `sub*` | variable substitution
+ `iso*` | turns an fct object to an fct function expecting an interpretation of the variables as argument
 `check*` | tests a function (one step)
 `gcheck*` | first `gen*`, then `check*`
 `ftest*` | tests all the way (by using `check*`)

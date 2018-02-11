@@ -141,6 +141,10 @@
 ;;   (gen* (var* :a (fn [x] (map (var* :b (rand-fn (fn [] (rand-nth (list true false)))))
 ;;                               (range (rand-int x)))))))
 
+(c/defn ^{:doc "as ev*, but generates missing keys with"} gev*
+  [^{:doc "fct object"} object
+   ^{:doc "as in ev*"} l]
+  (ev* object (nested-merge l (show-gen* object))))
 
 
 (c/defn ^{:doc "variable construction"} var*
@@ -291,6 +295,9 @@
 
 ;;(def t (sub* (var* :a (var* :b 4)) {:b (var* :c 40)}))
 
+(c/defn ^{:doc "creates an fct function f which evaluates the object on the argumentof f"} iso*
+  [^{:doc "fct object"} object]
+  (construct* (c/fn [l] (c/fn [a] (gev* object (ev* a l))))))
 
 (c/defmacro ^{:doc "generic lifting of macros"} lift-macro
   [^{:doc "clojure macro"} macro
