@@ -297,7 +297,7 @@
 
 (c/defn ^{:doc "creates an fct function f which evaluates the object on the argumentof f"} iso*
   [^{:doc "fct object"} object]
-  (construct* (c/fn [l] (c/fn [a] (gev* object (ev* a l))))))
+  (lift* (c/fn [a] (gev* object a))))
 
 (c/defmacro ^{:doc "generic lifting of macros"} lift-macro
   [^{:doc "clojure macro"} macro
