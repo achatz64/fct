@@ -383,7 +383,9 @@
   (c/let [;; destructuring sigs
           [^{:doc "arguments"} args
            o b] sigs 
-          ^{:doc "additional options, e.g. {:gen ...}"} opt (if (c/map? o) o nil)
+          ^{:doc "additional options, e.g. {:gen ...}"} opt (if (c/and (c/map? o) b)
+                                                              o
+                                                              nil)
           ^{:doc "body (only one!)"} body (if opt b o)
           
           ;; real start
@@ -420,7 +422,9 @@
                                                           (fct.core/ev* to-ev#
                                                                         (fct.core/nested-merge l# (clojure.core/let [~@d#]
                                                                                                     (clojure.core/into {} (clojure.core/list ~@m#))))))
-                                  {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
+                                  {:fct/? false :fct/fcn? true :fct/spec (if (clojure.core/vector? args-spec#)
+                                                                           (fct.core/fnn [] args-spec#)
+                                                                           args-spec#)}))
                               :gen (fct.core/nested-merge (fct.core/show-gen* args-spec#)
                                                           ev-gen#)))
 
@@ -459,10 +463,17 @@
           ^{:doc "name, used for recursion (optional)"} name (if (c/symbol? x) x nil)
           ^{:doc "args (required)"} args (if name y x)
           [o b] (if name [o b] [y o])
-          ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt (if (c/map? o) o nil)
+          ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt (if (c/and (c/map? o) b)
+                                                                         o
+                                                                         nil)
           ^{:doc "body (only one!) (required)"} body (if opt b o)]
 
-    (c/cond (c/and name opt)
+    (c/cond (c/and (c/= args []) (c/not opt))
+            (if name
+              `(fct.core/fn ~name [] {:gen []} ~body)
+              `(fct.core/fnn [] {:gen []} ~body))   
+                             
+            (c/and name opt)
             `(fct.core/fnn [& a#] ~opt (fct.core/let [h# (fct.core/fnn [self# & a#]
                                                                        (fct.core/let [~name (fct.core/fnn [& a#] (fct.core/apply self# (fct.core/conj a# self#)))
                                                                                       ~args a#]
