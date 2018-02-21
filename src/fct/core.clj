@@ -71,6 +71,11 @@
           nil
           (c/first args))))))
 
+(c/defn ^{:doc "merging generators"} gen-merge
+  [& ^{:doc "generators, that is fns without arguments with values in hash-maps"} gens]
+  (c/fn [] (c/apply nested-merge (c/map (c/fn [g] (g))
+                                        gens))))
+
 (c/defn ^{:doc "find all keys for a nested map"} nested-keys
   [^{:doc "nested map"} m]
 
@@ -115,16 +120,16 @@
     (:fct/gen (c/meta object))
 
     (c/cond
-      (c/vector? object) (c/apply nested-merge (c/map (c/fn [o] (show-gen* o))
+      (c/vector? object) (c/apply gen-merge (c/map (c/fn [o] (show-gen* o))
                                                       object))
-      (c/map? object) (c/apply nested-merge (c/map (c/fn [[k v]] (nested-merge (show-gen* k) (show-gen* v)))
+      (c/map? object) (c/apply gen-merge (c/map (c/fn [[k v]] (gen-merge (show-gen* k) (show-gen* v)))
                                                    object))
-      :else {})))
+      :else (c/fn [] {}))))
 
 (c/defn ^{:doc "constructs an fct object"} construct*
   [^{:doc "function assigning maps with variable bindings (like l in ev*) a clojure object"} inter
    & {:keys [^{:doc "generators for the variables"} gen]
-      :or {gen {}}}]
+      :or {gen (c/fn [] {})}}]
   
   (c/with-meta
     (c/fn [& args] (construct*
@@ -132,9 +137,9 @@
                     (c/fn [l]
                       (c/apply (inter l) (c/map #(ev* % l) args)))
                     
-                    :gen (c/apply nested-merge (c/conj (c/map show-gen*
-                                                              args)
-                                                       gen))))
+                    :gen (c/apply gen-merge (c/conj (c/map show-gen*
+                                                           args)
+                                                    gen))))
     {:fct/? true
      :fct/inter inter
      :fct/gen gen}))
@@ -151,12 +156,12 @@
 
 (c/defn ^{:doc "variables on which the object depends"} deps*
   [^{:doc "fct-object"} object]
-  (nested-keys (show-gen* object)))
+  (nested-keys ((show-gen* object))))
 
 (clojure.core/defn ^{:doc "generates a witness"} gen*
   [^{:doc "fct object"} a]
     
-  (c/let [gen (show-gen* a)]
+  (c/let [gen ((show-gen* a))]
     (ev* a gen)))
 
 ;; (def ^{:private true :doc "1. example for gen* in ns fct.core"} ex1-gen*
@@ -172,7 +177,7 @@
 (c/defn ^{:doc "as ev*, but generates missing keys with"} gev*
   [^{:doc "fct object"} object
    ^{:doc "as in ev*"} l]
-  (ev* object (nested-merge l (show-gen* object))))
+  (ev* object (nested-merge l ((show-gen* object)))))
 
 
 (c/defn ^{:doc "variable construction"} var*
@@ -182,18 +187,12 @@
     ^{:doc "fct object"} object]
    (c/let [key (if (c/keyword? key) [key] key)]
      (construct* (c/fn [l] (c/get-in l key))
-                 :gen (c/assoc-in {} key (gen* object))))))
+                 :gen (c/fn [] (c/assoc-in {} key (gen* object)))))))
 
 ;; (def ^{:private true :doc "1. example for var* in ns fct.core"} ex1-var*
 ;;   (if-else (var* :bool)
 ;;            (var* :a)
 ;;            (var* :b)))
-
-
-(c/defn ^{:doc "incognito variable construction"} incognito-var*
-  [^{:doc "keyword attached to the variable"} key]
-  (c/let [key (if (c/keyword? key) [key] key)]
-    (construct* (c/fn [l] (c/get-in l key)))))
 
 
 (c/defn ^{:doc "lifting clojure functions"} lift*
@@ -342,7 +341,7 @@
                        na))]
     `(fct.core/construct* (c/fn [~l]
                             ~body)
-                          :gen (fct.core/nested-merge ~@for-gen))))
+                          :gen (fct.core/gen-merge ~@for-gen))))
  
 ;; (c/defmacro ^{:private true :doc "1. example for lift-macro in ns fct.core"} ex1-lift-macro [& args]
 ;;   `(lift-macro c/cond ~@args))
@@ -422,8 +421,8 @@
                                                l#))
                                {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
                            
-                           :gen (fct.core/nested-merge (fct.core/show-gen* args-spec#)
-                                                          ev-gen#)))
+                           :gen (fct.core/gen-merge (fct.core/show-gen* args-spec#)
+                                                    ev-gen#)))
             
             name
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))
@@ -451,7 +450,7 @@
                                                    
                                                    {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
                            
-                           :gen (fct.core/nested-merge (fct.core/show-gen* args-spec#)
+                           :gen (fct.core/gen-merge (fct.core/show-gen* args-spec#)
                                                        ev-gen#)))
 
             "else"
