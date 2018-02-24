@@ -269,19 +269,25 @@
   
   (c/let [keys (c/into #{} (nested-keys l))
           l-kv (nested-key-value l)
-          l-gen (nested-key-value
-                 (c/apply nested-merge (c/map (c/fn [[_ v]] (show-gen* v))
-                                              l-kv)))
+          l-gen (c/fn []
+                  (nested-into
+                   (nested-key-value
+                    (c/apply nested-merge (c/map (c/fn [[_ v]] ((show-gen* v)))
+                                                 l-kv)))))
           m (c/-> object c/meta)]
     (if (:fct/? m)
-      (c/let [remove-gen (c/loop [r (:fct/gen m)
-                                  keys (c/into '() keys)]
-                           (if (c/empty? keys)
-                             r
-                             (c/let [[k] keys]
-                               (recur (dissoc-in r k) (c/rest keys)))))
-              new-gen (nested-merge remove-gen (nested-into l-gen))]
+      (c/let [remove-gen (c/fn []
+                           (c/loop [r ((:fct/gen m))
+                                    keys (c/into '() keys)]
+                             (if (c/empty? keys)
+                               r
+                               (c/let [[k] keys]
+                                 (recur (dissoc-in r k) (c/rest keys))))))
+              
+              new-gen (gen-merge remove-gen l-gen)]
+
         {:gen new-gen})
+
       {})))
 
 
@@ -402,8 +408,39 @@
 
     (c/cond (c/and (c/= args []) (c/not opt))
             (if name
-              `(fct.core/fn ~name [] {:gen []} ~body)
-              `(fct.core/fn [] {:gen []} ~body))   
+              `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))
+                                                            ~name (fct.core/lift* 1)]
+                                           ~body)
+                                  ev-gen# (fct.core/show-gen* to-ev#)
+                                  args-spec# (:gen ~opt)]
+                 (construct* (clojure.core/fn [l#]
+                               (clojure.core/with-meta
+                                 (clojure.core/fn ~name [& ~arg#]
+                                   (fct.core/ev* (clojure.core/let [~name (fct.core/lift* ~name)]
+                                                   (clojure.core/let [~@d#]
+                                                     (clojure.core/let [~@liftd#]
+                                                       ~body)))
+                                                 l#))
+                                 {:fct/? false :fct/fcn? true :fct/spec []}))
+                             
+                             :gen (fct.core/gen-merge (fct.core/show-gen* args-spec#)
+                                                      ev-gen#)))
+              
+              `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))]
+                                           ~body)
+                                  ev-gen# (fct.core/show-gen* to-ev#)
+                                  args-spec# (:gen ~opt)]
+                 (construct* (clojure.core/fn [l#] (clojure.core/with-meta
+                                                     (clojure.core/fn [& ~arg#]
+                                                       (fct.core/ev* (clojure.core/let [~@d#]
+                                                                       (clojure.core/let [~@liftd#]
+                                                                         ~body))
+                                                                     l#))
+                                                     
+                                                     {:fct/? false :fct/fcn? true :fct/spec []}))
+                             
+                             :gen (fct.core/gen-merge (fct.core/show-gen* args-spec#)
+                                                      ev-gen#))))  
                              
             (c/and name opt)
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))
@@ -419,7 +456,9 @@
                                                    (clojure.core/let [~@liftd#]
                                                      ~body)))
                                                l#))
-                               {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
+                               {:fct/? false :fct/fcn? true :fct/spec (if (c/vector? args-spec#)
+                                                                        (fct.core/fn [] args-spec#)
+                                                                        args-spec#)}))
                            
                            :gen (fct.core/gen-merge (fct.core/show-gen* args-spec#)
                                                     ev-gen#)))
@@ -448,11 +487,13 @@
                                                                        ~body))
                                                                    l#))
                                                    
-                                                   {:fct/? false :fct/fcn? true :fct/spec args-spec#}))
+                                                   {:fct/? false :fct/fcn? true :fct/spec (if (c/vector? args-spec#)
+                                                                                            (fct.core/fn [] args-spec#)
+                                                                                            args-spec#)}))
                            
                            :gen (fct.core/gen-merge (fct.core/show-gen* args-spec#)
-                                                       ev-gen#)))
-
+                                                    ev-gen#)))
+            
             "else"
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))]
                                          ~body)
