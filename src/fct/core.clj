@@ -386,16 +386,53 @@
 (c/defmacro ->> [& args] `(c/->> ~@args))
 
 
-(c/defmacro fn [& sigs]
-  (c/let [[x y o b] sigs
+(c/defn ^{:doc "is the argument admissible?"} adm-arg?
+  [^{:doc "string"} x]
+  
+  (c/let [y (c/apply c/str (c/take 5 x))
+          z (c/apply c/str (c/take 7 x))]
+    
+    (c/not (c/or (c/= y "map__") (c/= y "seq__") (c/= y "vec__") (c/= z "first__")))))
+
+(c/defn help [& sigs]
+  (c/let [[x y o & b] sigs
           ^{:doc "name, used for recursion (optional)"} name (if (c/symbol? x) x nil)
           ^{:doc "args (required)"} args (if name y x)
-          [o b] (if name [o b] [y o])
-          ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt (if (c/and (c/map? o) b)
-                                                                         o
-                                                                         nil)
-          ^{:doc "body (only one!) (required)"} body (if opt b o)
+          ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt
+          (if name
+            (if (c/and (c/map? o) (c/not (c/empty? b)))
+              o
+              nil)
+            (if (c/and (c/map? y) o)
+              y
+              nil))
+          ^{:doc "bodies (required)"} bodies (c/cond (c/and name opt) b
+                                                     name (c/cons o b)
+                                                     opt (c/cons o b)
+                                                     (c/nil? o) (c/list y)
+                                                     :else (c/cons y (c/cons o b)))]
 
+    
+    (c/list name args opt bodies)))
+
+
+(c/defmacro fn [& sigs]
+  (c/let [[x y o & b] sigs
+          ^{:doc "name, used for recursion (optional)"} name (if (c/symbol? x) x nil)
+          ^{:doc "args (required)"} args (if name y x)
+          ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt
+          (if name
+            (if (c/and (c/map? o) (c/not (c/empty? b)))
+              o
+              nil)
+            (if (c/and (c/map? y) o)
+              y
+              nil))
+          ^{:doc "bodies (required)"} bodies (c/cons 'fct.core/do (c/cond (c/and name opt) b
+                                                                          name (c/cons o b)
+                                                                          opt (c/cons o b)
+                                                                          (c/nil? o) (c/list y)
+                                                                          :else (c/cons y (c/cons o b))))
           ;; start
           arg# (c/gensym 'fctarg__)
           d# (c/destructure [args arg#])
@@ -404,22 +441,21 @@
           m1# (c/map c/second m#)
           m2# (c/map c/first m#)
           liftd# (c/apply c/concat (c/map (c/fn [x] (c/list x (c/list 'fct.core/lift* x)))
-                                          (c/into '() (c/into #{} m1#))))]
+                                          (c/filter (c/fn [x] (adm-arg? (c/str x)))
+                                                    (c/into '() (c/into #{} m1#)))))]
 
     (c/cond (c/and (c/= args []) (c/not opt))
             (if name
               `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))
                                                             ~name (fct.core/lift* 1)]
-                                           ~body)
+                                           ~bodies)
                                   ev-gen# (fct.core/show-gen* to-ev#)
                                   args-spec# (:gen ~opt)]
                  (construct* (clojure.core/fn [l#]
                                (clojure.core/with-meta
-                                 (clojure.core/fn ~name [& ~arg#]
+                                 (clojure.core/fn ~name []
                                    (fct.core/ev* (clojure.core/let [~name (fct.core/lift* ~name)]
-                                                   (clojure.core/let [~@d#]
-                                                     (clojure.core/let [~@liftd#]
-                                                       ~body)))
+                                                   ~bodies)
                                                  l#))
                                  {:fct/? false :fct/fcn? true :fct/spec []}))
                              
@@ -427,14 +463,12 @@
                                                       ev-gen#)))
               
               `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))]
-                                           ~body)
+                                           ~bodies)
                                   ev-gen# (fct.core/show-gen* to-ev#)
                                   args-spec# (:gen ~opt)]
                  (construct* (clojure.core/fn [l#] (clojure.core/with-meta
-                                                     (clojure.core/fn [& ~arg#]
-                                                       (fct.core/ev* (clojure.core/let [~@d#]
-                                                                       (clojure.core/let [~@liftd#]
-                                                                         ~body))
+                                                     (clojure.core/fn []
+                                                       (fct.core/ev* ~bodies
                                                                      l#))
                                                      
                                                      {:fct/? false :fct/fcn? true :fct/spec []}))
@@ -445,16 +479,15 @@
             (c/and name opt)
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))
                                                           ~name (fct.core/lift* 1)]
-                                         ~body)
+                                         ~bodies)
                                 ev-gen# (fct.core/show-gen* to-ev#)
                                 args-spec# (:gen ~opt)]
                (construct* (clojure.core/fn [l#]
                              (clojure.core/with-meta
-                               (clojure.core/fn ~name [& ~arg#]
+                               (clojure.core/fn ~name ~args
                                  (fct.core/ev* (clojure.core/let [~name (fct.core/lift* ~name)]
-                                                 (clojure.core/let [~@d#]
-                                                   (clojure.core/let [~@liftd#]
-                                                     ~body)))
+                                                 (clojure.core/let [~@liftd#]
+                                                   ~bodies))
                                                l#))
                                {:fct/? false :fct/fcn? true :fct/spec (if (c/vector? args-spec#)
                                                                         (fct.core/fn [] args-spec#)
@@ -466,25 +499,23 @@
             name
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))
                                                           ~name (fct.core/lift* 1)]
-                                         ~body)
+                                         ~bodies)
                                 ev-gen# (fct.core/show-gen* to-ev#)]
-                 (construct* (clojure.core/fn [l#] (clojure.core/fn ~name [& ~arg#]
+                 (construct* (clojure.core/fn [l#] (clojure.core/fn ~name ~args
                                                      (fct.core/ev* (clojure.core/let [~name (fct.core/lift* ~name)]
-                                                                     (clojure.core/let [~@d#]
-                                                                       (clojure.core/let [~@liftd#]
-                                                                         ~body)))
+                                                                     (clojure.core/let [~@liftd#]
+                                                                       ~bodies))
                                                                    l#)))
                              :gen ev-gen#))            
             opt
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))]
-                                         ~body)
+                                         ~bodies)
                                 ev-gen# (fct.core/show-gen* to-ev#)
                                 args-spec# (:gen ~opt)]
                (construct* (clojure.core/fn [l#] (clojure.core/with-meta
-                                                   (clojure.core/fn [& ~arg#]
-                                                     (fct.core/ev* (clojure.core/let [~@d#]
-                                                                     (clojure.core/let [~@liftd#]
-                                                                       ~body))
+                                                   (clojure.core/fn ~args
+                                                     (fct.core/ev* (clojure.core/let [~@liftd#]
+                                                                     ~bodies)
                                                                    l#))
                                                    
                                                    {:fct/? false :fct/fcn? true :fct/spec (if (c/vector? args-spec#)
@@ -496,16 +527,13 @@
             
             "else"
             `(clojure.core/let [to-ev# (clojure.core/let [[~@m1#] (clojure.core/into [] (clojure.core/map fct.core/lift* (clojure.core/list ~@m2#)))]
-                                         ~body)
+                                         ~bodies)
                                 ev-gen# (fct.core/show-gen* to-ev#)]
-               (construct* (clojure.core/fn [l#] (clojure.core/fn [& ~arg#]
-                                                   (fct.core/ev* (clojure.core/let [~@d#]
-                                                                   (clojure.core/let [~@liftd#]
-                                                                     ~body))
+               (construct* (clojure.core/fn [l#] (clojure.core/fn ~args
+                                                   (fct.core/ev* (clojure.core/let [~@liftd#]
+                                                                   ~bodies)
                                                                  l#)))
                            :gen ev-gen#)))))
-
-
 
 ;; (def ^{:private true :doc "1. example for fn in ns fct.core"} ex1-fn
 ;;   (fn [x] x))
@@ -513,7 +541,6 @@
 ;; (def ^{:private true :doc "2. example for fn in ns fct.core"} ex2-fn
 ;;   (fn [x] {:gen (fn [] (vector (rand-int 100)))}
 ;;     x))
-
 
 
 (c/defmacro ^{:doc "almost usual syntax (body is required (only one))"}
