@@ -72,9 +72,39 @@
           (c/first args))))))
 
 (c/defn ^{:doc "merging generators"} gen-merge
-  [& ^{:doc "generators, that is fns without arguments with values in hash-maps"} gens]
-  (c/fn [] (c/apply nested-merge (c/map (c/fn [g] (g))
-                                        gens))))
+  [& ^{:doc "generators = lists of fns with values in hash-maps"} gens]
+  (c/loop [gens gens
+           r '()]
+    (if (c/every? c/empty? gens)
+
+      (c/reverse r)
+
+      (c/let [f (c/map (c/fn [g] (if (c/empty? g)
+                                   (c/fn [l] {})
+                                   (c/first g)))
+                       gens)]
+        (recur (c/map c/rest gens)
+               (c/cons (c/fn [l] (c/apply nested-merge (c/map (c/fn [x] (x l))
+                                                              f)))
+                       r))))))
+
+(def ^{:private true} ex-gen-merge
+  (gen-merge (c/list (c/fn [l] {:b (:a l)}) (c/fn [l] {:d 5})  (c/fn [l] {:a 3}))
+             (c/list (c/fn [l] {:c (:a l)})  (c/fn [l] {:a 3}))))
+
+(c/defn ^{:doc "evaluate generators"} gen-ev
+  [^{:doc "generator"} gen]
+
+  (c/let [gen (c/into [] gen)]
+    (c/loop [gen gen
+             r {}]
+      (if (c/empty? gen)
+        r
+        (c/let [f (c/peek gen)]
+          (recur (c/pop gen)
+                 (nested-merge r (f r))))))))
+
+;(gen-ev ex-gen-merge)
 
 (c/defn ^{:doc "find all keys for a nested map"} nested-keys
   [^{:doc "nested map"} m]
@@ -124,12 +154,12 @@
                                                       object))
       (c/map? object) (c/apply gen-merge (c/map (c/fn [[k v]] (gen-merge (show-gen* k) (show-gen* v)))
                                                    object))
-      :else (c/fn [] {}))))
+      :else (c/list (c/fn [l] {})))))
 
 (c/defn ^{:doc "constructs an fct object"} construct*
   [^{:doc "function assigning maps with variable bindings (like l in ev*) a clojure object"} inter
    & {:keys [^{:doc "generators for the variables"} gen]
-      :or {gen (c/fn [] {})}}]
+      :or {gen (c/list (c/fn [l] {}))}}]
   
   (c/with-meta
     (c/fn [& args] (construct*
@@ -156,12 +186,12 @@
 
 (c/defn ^{:doc "variables on which the object depends"} deps*
   [^{:doc "fct-object"} object]
-  (nested-keys ((show-gen* object))))
+  (nested-keys (gen-ev (show-gen* object))))
 
 (clojure.core/defn ^{:doc "generates a witness"} gen*
   [^{:doc "fct object"} a]
     
-  (c/let [gen ((show-gen* a))]
+  (c/let [gen (gen-ev (show-gen* a))]
     (ev* a gen)))
 
 ;; (def ^{:private true :doc "1. example for gen* in ns fct.core"} ex1-gen*
@@ -177,7 +207,7 @@
 (c/defn ^{:doc "as ev*, but generates missing keys with"} gev*
   [^{:doc "fct object"} object
    ^{:doc "as in ev*"} l]
-  (ev* object (nested-merge l ((show-gen* object)))))
+  (ev* object (nested-merge l (gen-ev (show-gen* object)))))
 
 
 (c/defn ^{:doc "variable construction"} var*
@@ -187,7 +217,8 @@
     ^{:doc "fct object"} object]
    (c/let [key (if (c/keyword? key) [key] key)]
      (construct* (c/fn [l] (c/get-in l key))
-                 :gen (c/fn [] (c/assoc-in {} key (gen* object)))))))
+                 :gen (c/cons  (c/fn [l] (c/assoc-in {} key (gev* object l)))
+                               (show-gen* object))))))
 
 ;; (def ^{:private true :doc "1. example for var* in ns fct.core"} ex1-var*
 ;;   (if-else (var* :bool)
@@ -263,61 +294,61 @@
       object)))
 
 
-(c/defn ^{:private true :doc "only gen is touched"}
-  gen-for-sub* [^{:doc "fct object"} object
-                ^{:doc "substitution map"} l]
+;; (c/defn ^{:private true :doc "only gen is touched"}
+;;   gen-for-sub* [^{:doc "fct object"} object
+;;                 ^{:doc "substitution map"} l]
   
-  (c/let [keys (c/into #{} (nested-keys l))
-          l-kv (nested-key-value l)
-          l-gen (c/fn []
-                  (nested-into
-                   (nested-key-value
-                    (c/apply nested-merge (c/map (c/fn [[_ v]] ((show-gen* v)))
-                                                 l-kv)))))
-          m (c/-> object c/meta)]
-    (if (:fct/? m)
-      (c/let [remove-gen (c/fn []
-                           (c/loop [r ((:fct/gen m))
-                                    keys (c/into '() keys)]
-                             (if (c/empty? keys)
-                               r
-                               (c/let [[k] keys]
-                                 (recur (dissoc-in r k) (c/rest keys))))))
-              
-              new-gen (gen-merge remove-gen l-gen)]
+;;   (c/let [keys (c/into #{} (nested-keys l))
+;;           l-kv (nested-key-value l)
+;;           l-gen (c/fn []
+;;                   (nested-into
+;;                    (nested-key-value
+;;                     (c/apply nested-merge (c/map (c/fn [[_ v]] (gen-ev (show-gen* v)))
+;;                                                  l-kv)))))
+;;           m (c/-> object c/meta)]
+;;     (if (:fct/? m)
+;;       (c/let [remove-gen (c/fn []
+;;                            (c/loop [r ((:fct/gen m))
+;;                                     keys (c/into '() keys)]
+;;                              (if (c/empty? keys)
+;;                                r
+;;                                (c/let [[k] keys]
+;;                                  (recur (dissoc-in r k) (c/rest keys))))))
+               
+;;               new-gen (gen-merge remove-gen l-gen)]
 
-        {:gen new-gen})
+;;         {:gen new-gen})
 
-      {})))
+;;       {})))
 
 
-;;sub* is too long and difficult this way, because the values of inter have fct-objects in their meta data; maybe it's better to have fct-objects only appearing in meta data of fct-objects  
+;; ;;sub* is too long and difficult this way, because the values of inter have fct-objects in their meta data; maybe it's better to have fct-objects only appearing in meta data of fct-objects  
 
-(clojure.core/defn ^{:doc "substitution of variables"} sub*
-  [^{:doc "fct object"} object
-   ^{:doc "map providing the substitutions for the variables"} l
-   &
-   {:keys [^{:doc "key, as in ev*"} key]
-    :or {key :fct/spec}}]
+;; (clojure.core/defn ^{:doc "substitution of variables"} sub*
+;;   [^{:doc "fct object"} object
+;;    ^{:doc "map providing the substitutions for the variables"} l
+;;    &
+;;    {:keys [^{:doc "key, as in ev*"} key]
+;;     :or {key :fct/spec}}]
   
-  (c/let [object (to-fct object)
-          simple-inter-sub* (c/fn [inter w] (inter (nested-merge (nested-into (c/map (c/fn [[k v]] [k (ev* v w)])
-                                                                                     (nested-key-value l)))
-                                                                 w)))
-          inter  (c/-> object c/meta :fct/inter) 
-          new-inter (c/fn [w] (c/let [after-sub* (simple-inter-sub* inter w)
-                                      m (c/meta after-sub*)
-                                      meta-obj (key m)
-                                      new-m (if meta-obj
-                                              (c/assoc m key (inter-sub* meta-obj l))
-                                              m)]
-                                (if meta-obj
-                                  (c/with-meta after-sub* new-m)
-                                  (if m
-                                    (c/with-meta after-sub* m)
-                                    after-sub*))))
-          gen (gen-for-sub* object l)]
-    (construct* new-inter :gen (:gen gen))))
+;;   (c/let [object (to-fct object)
+;;           simple-inter-sub* (c/fn [inter w] (inter (nested-merge (nested-into (c/map (c/fn [[k v]] [k (ev* v w)])
+;;                                                                                      (nested-key-value l)))
+;;                                                                  w)))
+;;           inter  (c/-> object c/meta :fct/inter) 
+;;           new-inter (c/fn [w] (c/let [after-sub* (simple-inter-sub* inter w)
+;;                                       m (c/meta after-sub*)
+;;                                       meta-obj (key m)
+;;                                       new-m (if meta-obj
+;;                                               (c/assoc m key (inter-sub* meta-obj l))
+;;                                               m)]
+;;                                 (if meta-obj
+;;                                   (c/with-meta after-sub* new-m)
+;;                                   (if m
+;;                                     (c/with-meta after-sub* m)
+;;                                     after-sub*))))
+;;           gen (gen-for-sub* object l)]
+;;     (construct* new-inter :gen (:gen gen))))
   
 ;; (def ^{:private true :doc "1. example for sub* in ns fct.core"} ex1-sub*
 ;;   (sub* (+ 1 (var* :a)) {:a (var* :b)}))
@@ -340,7 +371,7 @@
                                               (recur (c/next a) (c/cons (c/list 'fct.core/ev* f l)  na)))
                                             na))))
           for-gen (c/loop [a arg
-                            na '()]
+                           na '()]
                      (if a
                        (c/let [f (c/first a)]
                          (recur (c/next a) (c/cons (c/list 'fct.core/show-gen* f)  na)))
@@ -393,27 +424,27 @@
           z (c/apply c/str (c/take 7 x))]
     
     (c/not (c/or (c/= y "map__") (c/= y "seq__") (c/= y "vec__") (c/= z "first__")))))
-
-(c/defn help [& sigs]
-  (c/let [[x y o & b] sigs
-          ^{:doc "name, used for recursion (optional)"} name (if (c/symbol? x) x nil)
-          ^{:doc "args (required)"} args (if name y x)
-          ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt
-          (if name
-            (if (c/and (c/map? o) (c/not (c/empty? b)))
-              o
-              nil)
-            (if (c/and (c/map? y) o)
-              y
-              nil))
-          ^{:doc "bodies (required)"} bodies (c/cond (c/and name opt) b
-                                                     name (c/cons o b)
-                                                     opt (c/cons o b)
-                                                     (c/nil? o) (c/list y)
-                                                     :else (c/cons y (c/cons o b)))]
+ 
+;; (c/defn help [& sigs]
+;;   (c/let [[x y o & b] sigs
+;;           ^{:doc "name, used for recursion (optional)"} name (if (c/symbol? x) x nil)
+;;           ^{:doc "args (required)"} args (if name y x)
+;;           ^{:doc "additional options, e.g. {:gen ...} (optional)"} opt
+;;           (if name
+;;             (if (c/and (c/map? o) (c/not (c/empty? b)))
+;;               o
+;;               nil)
+;;             (if (c/and (c/map? y) o)
+;;               y
+;;               nil))
+;;           ^{:doc "bodies (required)"} bodies (c/cond (c/and name opt) b
+;;                                                      name (c/cons o b)
+;;                                                      opt (c/cons o b)
+;;                                                      (c/nil? o) (c/list y)
+;;                                                      :else (c/cons y (c/cons o b)))]
 
     
-    (c/list name args opt bodies)))
+;;     (c/list name args opt bodies)))
 
 
 (c/defmacro fn [& sigs]
@@ -541,6 +572,7 @@
 ;; (def ^{:private true :doc "2. example for fn in ns fct.core"} ex2-fn
 ;;   (fn [x] {:gen (fn [] (vector (rand-int 100)))}
 ;;     x))
+
 
 
 (c/defmacro ^{:doc "almost usual syntax (body is required (only one))"}
