@@ -9,6 +9,8 @@
   (:fct/? (c/meta object)))
 
 
+
+
 (c/defn ^{:doc "get the interpretation"} ev*
   [^{:doc "fct object"} object
    ^{:doc "map providing the interpretations for the variables"} l]
@@ -16,7 +18,16 @@
   (c/let [m (c/meta object)]
     (if (:fct/? m)
       
-      ((:fct/inter m) l)
+      (c/let [clj-obj ((:fct/inter m) l)
+              m (c/meta clj-obj)
+              meta-obj (:fct/spec m)]
+
+        (if meta-obj
+
+          (c/with-meta clj-obj
+            (c/assoc m :fct/spec (ev* meta-obj l)))
+
+          clj-obj))
       
       (c/cond
         (c/vector? object)
@@ -101,6 +112,11 @@
 
 (def ^{:doc "converts expressions with vector and hash-maps to fct"} to-fct
   (lift* c/identity))
+
+(def ^{:doc "clojure interop"} call
+  (lift* (c/fn [f & a] (c/apply f a))))
+
+(def ex-call (ev* (call c/+ 1 2 (var* :a 5)) {:a 5}))
 
 ;;
 ;; automatic lifting of functions
@@ -244,44 +260,52 @@
                                                                      (c/nil? o) (c/list y)
                                                                      :else (c/cons y (c/cons o b))))
           ;; start
-          [liftd# liftdummy#] (ds args)]
+          opt (if opt opt (if (c/empty? args)
+                            {:gen []}
+                            {:gen nil}))
+          [liftd# liftdummy#] (ds args)
+          for-recursion (if name
+                          (c/list name (c/list 'fct.min/lift* name))
+                          '())
+          for-recursion-dummy (if name
+                                (c/list name (c/list 'fct.min/lift* 1))
+                                '())
+          name (if name name (c/gensym 'fct__fn__name))]
     
-    (if name
 
-      `(c/let [deps# (fct.min/deps* (clojure.core/let [~name (fct.min/lift* 1)]
-                                      (c/let [~@liftdummy#]
-                                        ~body)))
-               inter# (c/fn [l#]  
+    `(c/let [args-spec# (:gen ~opt)
+             deps# (fct.min/deps* (clojure.core/let [~@for-recursion-dummy]
+                                    (c/let [~@liftdummy#]
+                                      ~body)))
+             inter# (c/fn [l#]  
+                      (c/with-meta
+
                         (c/fn ~name ~args
                           (fct.min/ev*
-                           (clojure.core/let [~name (fct.min/lift* ~name)]
+                           (clojure.core/let [~@for-recursion]
                              (clojure.core/let [~@liftd#]
                                ~body))
-                           l#)))]
-         
-         (fct.min/construct* inter# :deps deps#))
-      
-      `(c/let [deps# (fct.min/deps* (c/let [~@liftdummy#]
-                                      ~body))
-               inter# (c/fn [l#]  
-                        (c/fn ~args (fct.min/ev*
-                                     (clojure.core/let [~@liftd#] 
-                                       ~body)
-                                     l#)))]
-         
-         (fct.min/construct* inter# :deps deps#)))))
+                           l#))
+                        
+                        {:fct/? false :fct/fcn? true :fct/spec args-spec#}))]
+       
+       (fct.min/construct* inter# :deps deps#))))
 
 
 (def ex1-fn (ev* ((fn [{:keys [a b]}] (+ a b))
                   (var* :h))
                  {:h {:a 3 :b 5}}))
 
-(def ex2-fn (ev* (fn g [] (c/let [a (c/rand)]
-                             (if-else (< a 0.1)
-                                      a
-                                      (g))))
+(def ex2-fn (ev* (fn g [] 
+                   (c/let [a (c/rand)]
+                     (if-else (< a 0.1)
+                              a
+                              (g))))
                  {}))
 
+(def ex3-fn (ev* (fn [x] {:gen (fn [] [(rand-int 10)])}
+                   x)
+                 {}))
 
 (c/defmacro ^{:doc "almost usual syntax"}
   let
@@ -390,6 +414,75 @@
 ;; (def ^{:private true :doc "1. example for rand-coll in ns fct.core"} ex1-rand-coll
 ;;   (gen* (rand-coll '(1 2 3 4) 5)))
 
+;; test
+
+(c/defmacro defn [name & sigs]
+  `(def ~name (fct.core/fn ~name ~@sigs)))
+
+
+;;
+;; testing
+;;
+
+(c/defn ^{:doc "applies gen* when called on a fct function, otherwise generates arguments and calls function on them"} check*
+  [^{:doc "function"} f]
+  
+  (c/let [m (c/meta f)
+          spec-structure (:fct/spec m)]
+    
+    (c/cond
+
+      (c/or (c/= nil (:fct/? m))
+            (c/= spec-structure nil))  nil
+
+      true  (c/cond
+              
+              (:fct/? m)
+              {:args nil
+               :ret (ev* f {})} ; to be changed to gen*                     
+              
+              (:fct/fcn? m)
+              (if (c/not (c/or (c/= spec-structure {})
+                               (c/= spec-structure [])))
+                (c/let [a (spec-structure)]
+                  {:args a
+                   :ret (c/apply f a)})
+                
+                {:args []
+                 :ret (f)})))))
+
+
+(c/defn ^{:doc "runs tests by using check*"} ftest*
+
+  [^{:doc "function"} f
+   & {:keys [count-tests] :or {count-tests 1}}]
+
+  (c/let [test-f (c/fn [x c] (c/let [s (c/map (c/fn [i] (check* x))
+                                              (c/range c))
+                                     [f] s]
+                               (if f
+                                 (c/map (c/fn [c] (:ret c))
+                                        s)
+                                 nil)))
+          
+          f (c/let [m (c/meta f)]
+              (c/cond (:fct/fn? m) (:fct/fn m)
+                      true f))
+          
+          first-result (test-f f count-tests)
+          inner-test-loop (c/fn [l] (c/loop [l l
+                                             ret '()]
+                                      (if (c/empty? l)
+                                        ret
+                                        (c/let [x (c/first l)
+                                                y (test-f x 1)]
+                                          (if y
+                                            (recur (c/rest l) (c/conj ret (c/first y)))
+                                            (recur (c/rest l) ret))))))]
+    (c/loop [l first-result]
+      (if (c/empty? l)
+        true
+        (recur (inner-test-loop l))))))
 
 ;; performance test
 
