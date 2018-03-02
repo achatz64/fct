@@ -9,8 +9,6 @@
   (:fct/? (c/meta object)))
 
 
-
-
 (c/defn ^{:doc "get the interpretation"} ev*
   [^{:doc "fct object"} object
    ^{:doc "map providing the interpretations for the variables"} l]
@@ -168,9 +166,18 @@
                                           (if a
                                             (c/let [f (c/first a)]
                                               (recur (c/next a) (c/cons (c/list 'fct.min/ev* f l)  na)))
-                                            na))))]
+                                            na))))
+          for-deps (c/loop [a arg
+                            na '()]
+                     (if a
+                       (c/let [f (c/first a)]
+                         (recur (c/next a) (c/cons (c/list 'fct.min/deps* f)  na)))
+                       na))]
+    
     `(fct.min/construct* (c/fn [~l]
-                            ~body))))
+                           ~body)
+
+                         :deps (clojure.set/union ~@for-deps))))
  
 ;; (c/defmacro ^{:private true :doc "1. example for lift-macro in ns fct.min"} ex1-lift-macro [& args]
 ;;   `(lift-macro c/cond ~@args))
@@ -322,12 +329,20 @@
              [liftd# liftdummy#] (ds args#)
              rec# (c/rest (c/rest bindings))]
        
-       `(construct* (c/fn [l#]
-                      (clojure.core/let [~args# (fct.min/ev* ~val# l#)]
-                        
-                        (clojure.core/let [~@liftd#] 
-                          (fct.min/ev* (fct.min/let [~@rec#] ~body)
-                                       l#)))))))))
+       `(c/let [dummy# (clojure.core/let [~@liftdummy#] 
+                         (fct.min/let [~@rec#] ~body)) 
+
+                deps# (clojure.set/union (fct.min/deps* ~val#)
+                                         (fct.min/deps* dummy#))
+
+                inter# (c/fn [l#]
+                          (clojure.core/let [~args# (fct.min/ev* ~val# l#)]
+                            
+                            (clojure.core/let [~@liftd#] 
+                              (fct.min/ev* (fct.min/let [~@rec#] ~body)
+                                           l#))))]
+          (construct* inter#
+                      :deps deps#))))))
 
 
 
