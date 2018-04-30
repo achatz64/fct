@@ -3,7 +3,7 @@
 ### List of all functions and macros
 
 #### `*` functions:
-* (general use) [`ev*`](#ev*),  [`eval*`](#eval*),  [`gen*`](#gen*), [`construct*`](#construct*),  [`var*`](#var*),  [`lift*`](#lift*), [`on-obj*`] (#on-obj*)
+* (general use) [`ev*`](#ev*),  [`eval*`](#eval*),  [`gen*`](#gen*), [`construct*`](#construct*),  [`var*`](#var*),  [`lift*`](#lift*), [`on-obj*`](#on-obj*)
 * (testing) [`check*`](#check*), [`gcheck*`](#gcheck*), [`ftest*`](#ftest*)
 
 #### Macros:
