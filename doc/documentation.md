@@ -3,7 +3,7 @@
 ### List of all functions and macros
 
 #### `*` functions:
-* (general use) `ev*`, `deps-tree*`, `deps-list*`, `deps*`, `gen*`, `construct*`, `sub*`, `var*`, `incognito-var*`, `lift*`
+* (general use) [`ev*`](#ev*), `deps-tree*`, `deps-list*`, `deps*`, [`gen*`](#gen*), `construct*`, `sub*`, `var*`, `incognito-var*`, `lift*`
 * (testing) `check*`, `gcheck*`, `ftest*`
 
 #### Macros:
@@ -16,7 +16,7 @@
 
 ### Syntax and examples
 
-`ev*`
+#### <a name="ev*"> </a> `ev*`
 ```clj
 (clojure.core/defn ^{:doc "evaluation of an fct object resulting in a clj object"} ev*
   [^{:doc "fct object"} object
@@ -68,7 +68,7 @@ Examples:
 (clojure.core/defn ^{:doc "lists all variables on which the object depends"} deps*
   [^{:doc "fct-object"} object] ...)
 ```
-`gen*`
+#### <a name="gen*"> </a> `gen*`
 ```clj
 (clojure.core/defn ^{:doc "generates a witness"} gen*
   [^{:doc "fct object"} a] ...)
