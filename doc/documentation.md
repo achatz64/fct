@@ -161,13 +161,14 @@ Examples:
 ```
 
 #### <a name="on-obj*"> </a> `on-obj*`
+```clj
 (clojure.core/defn ^{:doc "replaces in the interpretation for the fct object the global state (l) with the provided state"} on-obj*
   ([^{:doc "fct object"} object
     ^{:doc "state"} state]
    
    (construct* (c/fn [l]                                  
                  (ev* object (ev* state l))))))
-
+```
 
 #### <a name="let"> </a> `let`
 ```clj
