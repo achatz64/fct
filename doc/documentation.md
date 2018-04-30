@@ -7,7 +7,7 @@
 * (testing) [`check*`](#check*), [`gcheck*`](#gcheck*), [`ftest*`](#ftest*)
 
 #### Macros:
-* (generic lifting) [`lift-macro`](#lift-macro), [`throw`](#throw), [`if`](#if), [`if-else`](#if-else), [`cond`](#cond), [`lazy-seq`](#lazy-seq), [`and`](#and), [`or`](#or), [`do`](#do), [`->`](#->), [`->>`](#-->),
+* (generic lifting) [`lift-macro`](#lift-macro), [`throw`](#throw), [`if`](#if), [`if-else`](#if-else), [`cond`](#cond), [`lazy-seq`](#lazy-seq), [`and`](#and), [`or`](#or), [`do`](#do), [`->`](#->), [`->>`](#->>),
 * (different syntax) [`let`](#let), [`fn`](#fn), [`defn`](#defn), [`loop`](#loop)
 
 #### Fct functions:
